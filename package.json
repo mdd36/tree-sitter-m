@@ -1,0 +1,25 @@
+{
+  "name": "tree-sitter-powerquery-m",
+  "version": "0.1.0",
+  "description": "Power Query M language grammar for tree-sitter",
+  "keywords": [
+    "parser",
+    "lexer"
+	],
+  "author": "Matthew Dickson",
+  "license": "MIT",
+  "dependencies": {
+    "nan": "^2.17.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.47.0",
+    "tree-sitter-cli": "0.20.8"
+  },
+  "repository": "https://github.com/mdd36/tree-sitter-powerquery-m",
+  "scripts": {
+    "build": "tree-sitter generate",
+    "lint": "eslint grammar.js",
+    "parse": "tree-sitter parse",
+    "test": "tree-sitter test"
+  }
+}

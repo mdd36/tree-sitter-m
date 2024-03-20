@@ -155,9 +155,9 @@ module.exports = grammar({
 		literal_expression: $ => choice(
 			$.boolean,
 			$.number,
-			// TODO string
+			$.string,
 			$.null,
-			// TODO verbatium
+			$.verbatium,
 		),
 		list_expression: $ => seq(
 			"{",
@@ -200,18 +200,47 @@ module.exports = grammar({
 			const decimal = /[0-9]+(\.[0-9]+)?([eE][\-+]?[0-9]+)?/
 			return choice(hex, decimal)
 		},
+		string: $ => token.immediate(seq(
+			'"',
+			repeat(choice(
+				$._string_fragment,
+				$._escape_sequence,
+				$._quote_escape,
+			)),
+			'"',
+		)),
+		verbatium: $ => 
 		null: _ => "null",
 		identifier: $ => choice(
 			$._regular_identifier,
 			$._quoted_identifier,
 		),
 
-		_regular_identifier: _ => /[_a-zA-Z][_\-a-zA-Z0-9]/,
-		_quoted_identifier: _ => seq(
+		_regular_identifier: _ => token.immedate(/[_a-zA-Z][_\-a-zA-Z0-9]/),
+		_quoted_identifier: $ => token.immediate(seq(
 			'#"',
-			/.+/, // TODO this is the same as a string format
+			choice(
+				$._string_fragment,
+				$._quote_escape,
+				$._escape_sequence,
+			),
 			'"',
-		),
+		)),
+
+		_string_fragment: _ => token.immediate(prec(1, 
+			// Very arcane, but basically:
+			// 1: Anything EXCEPT ", #, or (,
+			// 2: Any ( not preceeded by a #,
+			// 3: Any # not followed by a (
+			// #( is the escape sequence for Power Query
+			/([^"#(\n\r]|((?<!#)\()|(#(?!\()))+/
+		)),
+		_quote_escape: _ => "",
+		_escape_sequence: _ => token.immediate(seq(
+			"#(",
+			comma(/[0-9a-fA-F]{4}|[0-9a-fA-F]{8}|cr|lf|tab|#/),
+			")"
+		)),
 	},
 })
 

@@ -10,46 +10,56 @@
 // @ts-check
 
 module.exports = grammar({
-	name: 'powerquery-m', 
+	name: 'm', 
 	externals: $ => [],
 	extras: $ => [],
 	supertypes: $ => [],
 	inline: $ => [],
 	precedences: $ => [
-		'mul',
-		'div',
-		'plus',
-		'sub',
-		'concat',
-		'lt' ,
-		'gt' ,
-		'lte',
-		'gte',
-		'eq',
-		'neq',
-		'as',
-		'is',
-		'and',
-		'or',
-		'coalesce',
+		[
+			'unary',
+			'mul',
+			'div',
+			'plus',
+			'sub',
+			'concat',
+			'lt' ,
+			'gt' ,
+			'lte',
+			'gte',
+			'eq',
+			'neq',
+			'as',
+			'is',
+			'and',
+			'or',
+			'coalesce',
+			'meta'
+		],
+		[
+			'let-in',
+			'if',
+		],
 	],
 	conflicts: $ => [],
-	word: $ => $.identifier,
+	word: $ => $._regular_identifier,
 	rules: {
-		document: $ => choice(repeat($.section), $.expression),
+		document: $ => choice(repeat1($.section), $.expression),
 		section: $ => seq(
-			optional($.literal_attributes),
+			optional($.record_expression),
 			"section",
 			$.identifier,
 			";",
 			repeat1($.section_member)
 		),
 		section_member: $ => seq(
-			optional($.literal_attributes),
+			// Omitting literal attributes for now;
+			// they'll be colored like any other record.
 			optional("shared"),
 			$.identifier,
 			"=",
-			$.expression
+			$.expression,
+			";",
 		),
 		expression: $ => choice(
 			$.primary_expression,
@@ -63,16 +73,16 @@ module.exports = grammar({
 			$.try_expression,
 		),
 
-		uniary_expression: $ => seq(
+		unary_expression: $ => prec.left('unary', seq(
 			choice("-", "+", "not"),
 			$.expression,
-		),
+		)),
 
-		metadata_expression: $ => seq(
-			$.uniary_expression,
+		metadata_expression: $ => prec.left('meta', seq(
+			$.expression,
 			"meta",
-			$.uniary_expression
-		),
+			$.record_expression,
+		)),
 
 		binary_expression: $ => {
 			const operators = [
@@ -97,56 +107,56 @@ module.exports = grammar({
 				...operators.map(([op, opName]) => 
 					prec.left(opName, seq(
 						field('left', $.expression),
-						field('operator', $.op),
+						field('operator', op),
 						field('right', $.expression)
 					))
 				)
 			)
 		},
 
-		let_expression: $ => seq(
+		let_expression: $ => prec.left('let-in', seq(
 			"let",
 			comma1(seq($.identifier, "=", $.expression)),
 			"in",
 			$.expression
-		),
+		)),
 
-		if_expression: $ => seq(
+		if_expression: $ => prec.left('if', seq(
 			"if",
 			$.expression,
 			"then",
 			$.expression,
 			"else",
 			$.expression
-		),
+		)),
 
-		each_expression: $ => seq(
+		each_expression: $ => prec.right(seq(
 			"each",
 			$.expression,
-		),
+		)),
 
-		error_expression: $ => seq(
+		error_expression: $ => prec.right(seq(
 			"error",
 			$.expression
-		),
+		)),
 
-		try_expression: $ => seq(
+		try_expression: $ => prec.right(seq(
 			"try",
 			$.expression,
 			optional(choice(
 				seq("otherwise", $.expression),
 				seq("catch", "(", optional($.identifier), ")", $.expression)
 			))
-		),
+		)),
 		
 		primary_expression: $ => choice(
 			$.literal_expression,
 			$.list_expression,
-			// TODO record expression
+			$.record_expression,
 			$.identifier_expression,
 			$.section_access_expression,
 			$.parenthesized_expression,
-			// TODO field access expression
+			$.field_access_expression,
 			$.item_access_expression,
 			$.invoke_expression,
 			$.not_implemented_expression,
@@ -167,6 +177,15 @@ module.exports = grammar({
 			)),
 			"}",
 		),
+		record_expression: $ => seq(
+			"[",
+			comma(seq(
+				$.identifier,
+				"=",
+				$.expression,
+			)),
+			"]",
+		),
 		identifier_expression: $ => seq(
 			optional("@"), $.identifier,
 		),
@@ -175,6 +194,9 @@ module.exports = grammar({
 		),
 		parenthesized_expression: $ => seq(
 			"(", $.expression, ")",
+		),
+		field_access_expression: $ => seq(
+			"TODO implement this"
 		),
 		item_access_expression: $ => seq(
 			$.primary_expression,
@@ -200,7 +222,7 @@ module.exports = grammar({
 			const decimal = /[0-9]+(\.[0-9]+)?([eE][\-+]?[0-9]+)?/
 			return choice(hex, decimal)
 		},
-		string: $ => token.immediate(seq(
+		string: $ => seq(
 			'"',
 			repeat(choice(
 				$._string_fragment,
@@ -208,34 +230,35 @@ module.exports = grammar({
 				$._quote_escape,
 			)),
 			'"',
-		)),
-		verbatium: $ => 
+		),
+		verbatium: $ => seq(
+			'!#"',
+			repeat(choice(
+				$._string_fragment,
+				$._escape_sequence,
+				$._quote_escape,
+			)),
+			'"'
+		),
 		null: _ => "null",
 		identifier: $ => choice(
 			$._regular_identifier,
 			$._quoted_identifier,
 		),
 
-		_regular_identifier: _ => token.immedate(/[_a-zA-Z][_\-a-zA-Z0-9]/),
-		_quoted_identifier: $ => token.immediate(seq(
+		_regular_identifier: _ => token.immediate(/[_a-zA-Z][_\-a-zA-Z0-9]/),
+		_quoted_identifier: $ => seq(
 			'#"',
 			choice(
-				$._string_fragment,
 				$._quote_escape,
 				$._escape_sequence,
+				$._string_fragment,
 			),
 			'"',
-		)),
+		),
 
-		_string_fragment: _ => token.immediate(prec(1, 
-			// Very arcane, but basically:
-			// 1: Anything EXCEPT ", #, or (,
-			// 2: Any ( not preceeded by a #,
-			// 3: Any # not followed by a (
-			// #( is the escape sequence for Power Query
-			/([^"#(\n\r]|((?<!#)\()|(#(?!\()))+/
-		)),
-		_quote_escape: _ => "",
+		_string_fragment: _ => token.immediate(prec(1, /[^"\n\r]+/)),
+		_quote_escape: _ => '""',
 		_escape_sequence: _ => token.immediate(seq(
 			"#(",
 			comma(/[0-9a-fA-F]{4}|[0-9a-fA-F]{8}|cr|lf|tab|#/),

@@ -5,7 +5,7 @@
   "keywords": [
     "parser",
     "lexer"
-	],
+  ],
   "author": "Matthew Dickson",
   "license": "MIT",
   "dependencies": {
@@ -21,5 +21,6 @@
     "lint": "eslint grammar.js",
     "parse": "tree-sitter parse",
     "test": "tree-sitter test"
-  }
+  },
+  "main": "bindings/node"
 }
